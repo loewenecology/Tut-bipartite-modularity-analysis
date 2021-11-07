@@ -227,7 +227,6 @@ bin.DIRT.site.mods$Mods <- as.factor(bin.DIRT.site.mods$Mods)
 
 ```{r, fig.width=5, fig.height=7.5}
 # Plot binary module map
-
 basemap <- get_stamenmap(bbox = c(left = -max(bin.DIRT.site.mods$Longitude) - 2, bottom = min(bin.DIRT.site.mods$Latitude) - 2, right = -min(bin.DIRT.site.mods$Longitude) + 2, top = max(bin.DIRT.site.mods$Latitude) + 2), zoom = 5, maptype = "terrain-background")
 
 bin.site.mod.map <- ggmap(basemap, maprange = TRUE) +
