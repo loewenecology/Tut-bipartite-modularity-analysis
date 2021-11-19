@@ -1,17 +1,24 @@
 ---
-title: Tutorial on community detection in ecological site-species networks by bipartite
-  modularity analysis
+title: Tutorial on community detection in biogeographical site-species networks by
+  bipartite modularity analysis
 author: "Charlie Loewen"
-date: "07/11/2021"
+date: "18/Nov/2021"
 output:
   html_document: default
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
+https://loewenecology.wordpress.com/
+
+https://github.com/loewenecology/Tut-bipartite-modularity-analysis
+
 There are several packages and options available to construct and analyze ecological networks, just as there are many tools for finding groups of species forming recurrent communities. Here, we will use the `bipartite` package (Dormann et al. 2008)	to plot a basic site by species network and then apply Beckett's (2016) __DIRTLPAb+__ algorithm to perform community detection by bipartite modularity analysis. Once the communities are found, we will work through some visualization options. For this demonstration, we will use phytoplankton community data from Alberta, Canada.
+
+While detailed knowledge of phytoplankton community ecology is not a prerequisite for this tutorial, readers should come with a baseline understanding and/or interest in network/graph theory and how such ideas might be used to describe general ecological patterns and organization of assemblages. I also assume some proficiency with `R`, including setting up projects, installing packages, and wrangling data for subsequent visualization (including mapping spatial data) and use with statistical packages.
 
 ### Objectives
 
@@ -33,19 +40,17 @@ There are several packages and options available to construct and analyze ecolog
 
 ## 1. Background
 
-(from Loewen et al. 2021a. Bioregions are predominately climatic for fishes of northern lakes. _Global Ecology and Biogeography_)
+Ecological networks take many forms, including classic examples of plant-pollinator and host-parasite networks, where different species (or groups of species) are represented as nodes with lines between them (called edges) indicating potential species interactions. Site-species connections can also be represented this way, whereby species nodes are connected to the site nodes at which they were found to occur. Such biogeographical networks hold a wealth of spatial and ecological information, which can accessed through a range of specialized network analyses.
 
-Modularity analysis provides unsupervised learning of community structure based solely on network topology, where divisions are made to maximize the number of edges within, rather than between, resultant modules (Newman & Girvan 2004). While there are a range of approaches to clustering data, most distance-based procedures flatten bipartite networks, reducing species information to some measure of site dissimilarity. Modularity analysis can be used to maintain the bipartite nature of site-species networks, identifying both groups of sites that share distinct biota and sets of species that tend to co-occur.
+One important method for finding commonalities among nodes is modularity analysis, which provides unsupervised learning of community structure based solely on network topology, where groups (or modules) of similar nodes are found by maximizing the number of edges within, rather than between, them (Newman & Girvan 2004). While there are a range of approaches to grouping sets of objects based on their attributes, most distance-based procedures flatten bipartite networks (those that have two sets of nodes, such as in a site-species network), reducing species information to some index of site dissimilarity. While many important ecological insights have been obtained by these traditional methods, a major advantage of modularity analysis is that it can maintain the bipartite nature of site-species networks, identifying both groups of sites that share distinct biota and sets of species that tend to co-occur.
 
-While modularity analysis was initially developed for the unipartite case (Newman & Girvan 2004), a bipartite formulation was proposed by Barber (2007) to allow links only between nodes of opposing types. Barber’s definition classifies both sets of nodes simultaneously and produces one-to-one node correspondence (i.e. it will produce the same number of modules for sites and species), associating assemblages directly to their physical locations.
-
-Modularity optimization is computationally challenging (NP-hard; Miyauchi & Sukegawa 2015), necessitating heuristics to search through solution space of larger networks. The __DIRTLPAb+__ algorithm of Beckett (2016) is a label propagation approach to maximize Barber’s bipartite modularity. Briefly, the label propagation algorithm (LPA) for community detection was proposed by Raghavan et al. (2007), where nodes were initialized with all unique labels, updated iteratively to adopt the most common labels of their neighbours (with ties broken uniformly), and grouped together once no further improvements could be made. The routine was subsequently modified to the bipartite case (LPAb); however, it had a tendency to become trapped in local maxima. To escape such traps, Liu & Murata (2010) incorporated a multistep greedy agglomerative algorithm (LPAb+). Their approach applied asynchronous label propagation (updating node labels of each type in turn) but added a step where resulting groups could be merged if doing so improved the solution, iterating between propagation and aggregation phases. Finally, because label propagation is inherently stochastic, and thus outcomes can vary depending on initialization, Beckett (2016) proposed that LPAb+ should be repeated under different node configurations (i.e. numbers of unique starting labels) and report the greatest ensuing score (DIRTLPAb+).
+Although modularity analysis was initially developed for the unipartite case (only one type of node; Newman & Girvan 2004), a bipartite formulation was later proposed by Barber (2007) to allow links only between nodes of opposing types. Maximizing Barber’s bipartite modularity causes both sets of nodes to be classified simultaneously and produces one-to-one node correspondence (i.e. producing the same number of modules for sites and species), associating assemblages directly to their physical locations. The resultant module structure of a site-species network can then be visualized to describe various spatial and biological patterns (such as the manifestation of bioregions), where trends can inform the development of testable hypotheses for further study.
 
 <a name="section2"></a>
 
 ## 2. Building the network
 
-For this tutorial, we will use `R` software (https://www.r-project.org/). We start by opening R, setting the working directory, and loading the `bipartite` (Dormann et al. 2008) and `dplyr` packages (Wickham et al. 2021).
+For this tutorial, we will use `R` software (https://www.r-project.org/). We start by opening R, setting the working directory, and loading the `bipartite` (Dormann et al. 2008) and `dplyr` packages (Wickham et al. 2021). Here, we will invoke a mix of tidyverse and base R procedures to wrangle data in preparation for analysis and subsequent visualizations.
 
 ```{r}
 # Load packages
@@ -53,9 +58,9 @@ library(bipartite)
 library(dplyr)
 ```
 
-Next, we read our ecological community data matrix containing species (columns) and sites (rows). The matrix can be binary (0s and 1s) or weighted (e.g. by abundance or biomass). For this demonstration, we will use data on phytoplankton communities in lakes and reservoirs across Alberta, Canada (see Loewen et al. 2020 for details). These data are presented as biomass for individual taxa at lakes and reservoirs on different sampling dates, and are available for download from the Dryad Digital Repository (https://doi.org/10.5061/dryad.gf1vhhmk7).
+Next, we read in our ecological community data. Data should be loaded or transformed to a wide format, with species as columns and sites as rows. The matrix can be binary (0s and 1s) or weighted (e.g. by abundance or biomass). For this demonstration, we will use data on phytoplankton communities in lakes and reservoirs across Alberta, Canada (see Loewen et al. 2020 for details). These data, sampled by the Alberta Government and the Alberta Lake Management Society Lakewatch Program, are presented as biomass for individual taxa at specific sites on multiple sampling dates, and are available for download from the Dryad Digital Repository (https://doi.org/10.5061/dryad.gf1vhhmk7).
 
-Download the data into your working directory and load it into the R environment. As data from multiple sampling events are provided fore each site, we will subset the matrix to work with records obtained in August only and remove extra fields.
+Download the data into your working directory and load it into the R environment. As data from multiple sampling events are provided fore each site, we will first subset the matrix to work with records obtained in August only and remove extra fields.
 
 ```{r}
 # Read the species data
@@ -97,13 +102,13 @@ plotweb(phyto.comm.aug.bio, text.rot = 90)
 dev.off()
 ```
 
-While there are too many species to make out the details in these plots, nodes at the top represent individual taxa while sites are represented along the bottom. Note that in the second (weighted) plot, thicker links between nodes indicate relatively greater biomass for a species at a particular site, whereas all links are the same thickness in the first (unweighted presence/absence) plot. Node thickness also varies, indicating relative biomass in the weighted graph and relative occurrence in the unweighted graph.
+While there are too many species to make out the details in these plots, nodes at the top represent individual taxa while sites are represented along the bottom. Note that in the second (weighted) plot, thicker links between nodes indicate relatively greater biomass for species at particular sites, whereas all links are the same thickness in the first (unweighted presence/absence) plot. Node thickness also varies, indicating relative biomass in the weighted graph and relative occurrence in the unweighted graph.
 
 <a name="section3"></a>
 
 ## 3. Analyzing the network
 
-We will use the `computeModules` function in the `bipartite` package (Dorman et al. 2008) to find groups of densely linked sites and species (i.e. modules) by maximizing Barber's index. First, we will analyze the unweighted network.
+We will use the `computeModules` function in the `bipartite` package (Dorman et al. 2008) to find groups of densely linked sites and species (i.e. modules) by maximizing Barber's index with Beckett's (2016) label propagation algorithm. First, we will analyze the unweighted network.
 
 ```{r}
 # Set random seed for reproducibility
@@ -125,17 +130,17 @@ bin.DIRT@likelihood
 
 The algorithm detected six modules with a modularity value of 0.2477575, but are these modules truly non-random?
 
-For this, we can compare the computed value to those obtained from a series of random networks. The issue of obtaining random networks is also non-trivial, and several approaches exist. Here, we will use the sequentially swapping __curveball__ algorithm (Strona et al. 2014), which has been shown to efficiently produce uniformly distributed null matrices that maintain row (site) and column (species) totals for presence/absence data. Because the approach is sequential (i.e. further randomized with each step), it requires a large number of iterations as well as a burn-in period. We will use the `oecosimu` function in the `vegan` package (Oksanen et al. 2020) to run the simulations in parallel. We will use 5,000 burn-in and thinning steps, which discard iterations at the beginning and between each sample, respectively.
+For this, we can compare the computed value to those obtained from a series of random networks. The issue of obtaining random networks is also non-trivial, and several approaches exist. We will use the sequentially swapping __curveball__ algorithm (Strona et al. 2014), which has been shown to efficiently produce uniformly distributed null matrices that maintain row (site) and column (species) totals for presence/absence data. Because the approach is sequential (i.e. further randomized with each step), it requires a large number of iterations as well as a burn-in period. We will use the `oecosimu` function in the `vegan` package (Oksanen et al. 2020) to run the simulations in parallel (parallel computing across multiple cores helps to reduce computation time). We will use 5,000 burn-in and thinning steps, which discard iterations at the beginning and between each sample, respectively.
 
 ```{r, results="hide"}
 # Load packages
 library(parallel)
 library(vegan)
 
-# Create a function that captures the modularity values of module structures
+# Create a function that captures the modularity statistic for a given network
 func <- function(x) computeModules(x)@likelihood
 
-# Detect and set the number of available cores to run simulations in parallel
+# Detect and set the number of available cores to run simulations in parallel (reducing computation time)
 mc.cores <- parallel::detectCores()
 clus <- makeCluster(mc.cores)
 clusterEvalQ(clus, library(bipartite))
@@ -164,13 +169,13 @@ abline(v = bin.test[["statistic"]], col = "red", lwd = 2)
 dev.off()
 ```
 
-In this plot, the red line represents the observed modularity statistic, while the density plot shows values obtained for random networks. As we can see, the proposed module structure is highly non-random, as the observed statistic is greater than any obtained for the random networks (P < 0.05). While we only generated 20 null matrices for demonstration purposes, several hundred (or thousand) should be used to obtain a null distribution for formal analyses (this can take a long time with large networks). It is also important to check that null matrices generated by sequential swapping procedures have converged on a random structure. Autocorrelation can be avoided with large numbers of burn-in and thinning steps.
+In this plot, the red line represents the observed modularity statistic, while the density plot shows values obtained for random networks. As we can see, the proposed module structure is highly non-random, as the observed statistic is greater than any obtained for the random networks (P < 0.05). While we only generated 20 null matrices for demonstration purposes, several hundred (or thousand) should be used to obtain a null distribution for formal analyses (this can take a long time with large networks). It is also important to check that null matrices generated by sequential swapping procedures have converged on a random structure. Autocorrelation (i.e. relatedness between sequentially produced null matrices) can be avoided with large numbers of burn-in and thinning steps.
 
 <a name="section4"></a>
 
 ## 4. Visualizing the proposed module structure
 
-Now, lets visualize the proposed module structure. We'll start with the site modules. Here, we'll use `ggmap` (Kahle & Wickham 2013) and `ggplot2` (Wickhman 2016). We will also use `ggsn` to add in a scale bar and north arrow (Baquero 2019). We'll extract site modules and merge these results with site coordinates (obtained from the environmental data matrix in Loewen et al. 2020) and plot the results on a terrain basemap.
+Now, lets visualize the proposed module structure. We'll start with the site modules. Here, we'll use `ggmap` (Kahle & Wickham 2013) and `ggplot2` (Wickhman 2016). We will also use `ggsn` to add in a scale bar and north arrow (Baquero 2019). We'll extract site modules and merge these results with site coordinates (obtained from the environmental data matrix in Loewen et al. 2020) and plot the results on a terrain basemap (note that map tiles are by Stamen Design under CC BY 3.0 with data by OpenStreetMap under ODbL).
 
 ```{r}
 # Load packages
@@ -183,9 +188,10 @@ phyto.env <- read.csv("Loewen_et_al._2020._Ecol_App._Environmental_data_-_final.
 phyto.env.aug <- subset(phyto.env, Month == "Aug")
 rownames(phyto.env.aug) <- phyto.env.aug$Lake.Name
 
-# Extract data for site module structure
+# Extract data for site and species module structure
 bin.DIRT.list <- listModuleInformation(bin.DIRT)
 
+# Create vectors of site assignments for each module (accessed manually from nested lists as follows)
 bin.DIRT.site.mod.1 <- bin.DIRT.list[[2]][[1]][[1]]
 bin.DIRT.site.mod.1.vector <- as.matrix(if_else(rownames(bin.DIRT@moduleWeb) %in% bin.DIRT.site.mod.1, 1, 0))
 bin.DIRT.site.mod.2 <- bin.DIRT.list[[2]][[2]][[1]]
@@ -199,15 +205,21 @@ bin.DIRT.site.mod.5.vector <- as.matrix(if_else(rownames(bin.DIRT@moduleWeb) %in
 bin.DIRT.site.mod.6 <- bin.DIRT.list[[2]][[6]][[1]]
 bin.DIRT.site.mod.6.vector <- as.matrix(if_else(rownames(bin.DIRT@moduleWeb) %in% bin.DIRT.site.mod.6, 1, 0))
 
-# Wrangle data for site module structure
+# Bind vectors of site module assignments
 bin.DIRT.site.mods <- cbind(bin.DIRT.site.mod.1.vector, bin.DIRT.site.mod.2.vector, bin.DIRT.site.mod.3.vector, bin.DIRT.site.mod.4.vector, bin.DIRT.site.mod.5.vector, bin.DIRT.site.mod.6.vector)
 
+# Assign lake names to site module assignments
 rownames(bin.DIRT.site.mods) <- rownames(bin.DIRT@moduleWeb)
+
+# Merge participation coefficients with site module structure 
 bin.DIRT.site.mods <- merge(bin.DIRT.site.mods, bin.DIRT.cz.lower$c, by = "row.names")
 rownames(bin.DIRT.site.mods) <- bin.DIRT.site.mods$Row.names
 bin.DIRT.site.mods <- bin.DIRT.site.mods[, -1]
 
+# Assign module names to site module structure
 colnames(bin.DIRT.site.mods) <- c("Mod01", "Mod02", "Mod03", "Mod04", "Mod05", "Mod06", "c")
+
+# Bind site coordinates and merge with site module structure
 coords2var <- cbind(phyto.env.aug$Latitude.N, phyto.env.aug$Longitude.W)
 coords2var <- as.data.frame(coords2var, row.names = row.names(phyto.env.aug))
 colnames(coords2var) <- c("Latitude", "Longitude")
@@ -215,6 +227,7 @@ bin.DIRT.site.mods <- merge(bin.DIRT.site.mods, coords2var, by = "row.names")
 rownames(bin.DIRT.site.mods) <- bin.DIRT.site.mods$Row.names
 bin.DIRT.site.mods <- bin.DIRT.site.mods[, -1]
 
+# Create factor indicating site module structure
 bin.DIRT.site.mods['Mods'] <- NA
 bin.DIRT.site.mods$Mods[bin.DIRT.site.mods$Mod01 == 1] <- "Mod01"
 bin.DIRT.site.mods$Mods[bin.DIRT.site.mods$Mod02 == 1] <- "Mod02"
@@ -249,7 +262,7 @@ bin.site.mod.map <- ggmap(basemap, maprange = TRUE) +
 north2(bin.site.mod.map, x = 0.9, y = 0.9, symbol = 16)
 ```
 
-The six modules are distributed across the province. The lack of any clear spatial pattern suggests a potentially important role for local factors (including water quality and biotic interactions) in driving community differentiation. We can also plot the participation coefficients of each site, which is a measure of among-module connectivity (Guimerà & Amaral 2005). Generally, higher participation coefficients indicate transition zones in spatially structured data.
+The six modules are distributed across the province. The lack of any clear spatial pattern suggests a potentially important role for local factors (including water quality and biotic interactions) in driving community differentiation. We can also plot the participation coefficients of each site, which is a measure of among-module connectivity (Guimerà & Amaral 2005). Generally, higher participation coefficients indicate transitional zones in spatially structured data.
 
 ```{r, fig.width=5, fig.height=7.5}
 # Plot binary participation coefficient map
@@ -274,9 +287,9 @@ bin.site.pc.map <- ggmap(basemap, maprange = TRUE) +
 north2(bin.site.pc.map, x = 0.9, y = 0.9, symbol = 16)
 ```
 
-Again, we see no clear spatial patterns, indicating that local factors may structure community differentiation at this scale of analysis.
+Again, we see no clear spatial patterns, suggesting that local factors may structure community differentiation at this scale of analysis.
 
-Now we'll plot the species modules. We'll extract the species modules, wrangle them, and produce a hierarchical edge bundling plot using `ggraph` (Pedersen 2021) and `igraph` (Csardi & Nepusz 2006). We'll also bring in some trait data to highlight groups of phytoplankton with specific attributes. Trait data are available from Supporting Information S2 in Loewen et al. (2021b) available at https://doi.org/10.1002/lno.11694.
+Next, we'll plot the species modules. We'll extract the results, wrangle them, and produce a hierarchical edge bundling plot using `ggraph` (Pedersen 2021) and `igraph` (Csardi & Nepusz 2006). For plot, code was adapted from Yan Holtz's R Graph Gallery (https://www.r-graph-gallery.com/311-add-labels-to-hierarchical-edge-bundling.html), where further step-by-step details are available. We'll also bring in some trait data to highlight groups of phytoplankton with specific attributes. Trait data are available from Supporting Information S2 in Loewen et al. (2021b) available at https://doi.org/10.1002/lno.11694.
 
 ```{r}
 # Load packages
@@ -289,7 +302,7 @@ phyto.traits$SPECIES.NAME <- gsub(" ", ".", phyto.traits$SPECIES.NAME)
 phyto.traits$SPECIES.NAME <- gsub("\\.\\.", ".", phyto.traits$SPECIES.NAME)
 rownames(phyto.traits) <- phyto.traits$SPECIES.NAME
 
-# Extract data for species module structure
+# Create vectors of species assignments for each module (accessed manually from nested lists as follows)
 bin.DIRT.sp.mod.1 <- bin.DIRT.list[[2]][[1]][[2]]
 bin.DIRT.sp.mod.1.vector <- as.matrix(if_else(colnames(bin.DIRT@moduleWeb) %in% bin.DIRT.sp.mod.1, 1, 0))
 bin.DIRT.sp.mod.2 <- bin.DIRT.list[[2]][[2]][[2]]
@@ -303,16 +316,21 @@ bin.DIRT.sp.mod.5.vector <- as.matrix(if_else(colnames(bin.DIRT@moduleWeb) %in% 
 bin.DIRT.sp.mod.6 <- bin.DIRT.list[[2]][[6]][[2]]
 bin.DIRT.sp.mod.6.vector <- as.matrix(if_else(colnames(bin.DIRT@moduleWeb) %in% bin.DIRT.sp.mod.6, 1, 0))
 
-# Wrangle data for species module structure
+# Bind vectors of species module assignments
 bin.DIRT.sp.mods <- cbind(bin.DIRT.sp.mod.1.vector, bin.DIRT.sp.mod.2.vector, bin.DIRT.sp.mod.3.vector, bin.DIRT.sp.mod.4.vector, bin.DIRT.sp.mod.5.vector, bin.DIRT.sp.mod.6.vector)
 
+# Assign species names to species module assignments
 rownames(bin.DIRT.sp.mods) <- colnames(bin.DIRT@moduleWeb)
+
+# Merge participation coefficients with species module structure 
 bin.DIRT.sp.mods <- merge(bin.DIRT.sp.mods, bin.DIRT.cz.higher$c, by = "row.names")
 rownames(bin.DIRT.sp.mods) <- bin.DIRT.sp.mods$Row.names
 bin.DIRT.sp.mods <- bin.DIRT.sp.mods[, -1]
 
+# Assign module names to species module structure
 colnames(bin.DIRT.sp.mods) <- c("Mod01", "Mod02", "Mod03", "Mod04", "Mod05", "Mod06", "c")
 
+# Create factor indicating species module structure
 bin.DIRT.sp.mods['Mods'] <- NA
 bin.DIRT.sp.mods$Mods[bin.DIRT.sp.mods$Mod01 == 1] <- "Mod01"
 bin.DIRT.sp.mods$Mods[bin.DIRT.sp.mods$Mod02 == 1] <- "Mod02"
@@ -322,9 +340,10 @@ bin.DIRT.sp.mods$Mods[bin.DIRT.sp.mods$Mod05 == 1] <- "Mod05"
 bin.DIRT.sp.mods$Mods[bin.DIRT.sp.mods$Mod06 == 1] <- "Mod06"
 bin.DIRT.sp.mods$Mods <- as.factor(bin.DIRT.sp.mods$Mods)
 
-#  Create adjacency matrix and wrangle edge lists
+# Create adjacency matrix from species module structure for hierarchical edge bundling plot
 bin.sp.adjac <- as.one.mode(phyto.comm.aug.bin, fill = 0, project = "higher", weighted = TRUE)
 
+# Define origins, destinations, and edges
 bin.sp.origins <- data.frame(c("origin", "origin", "origin", "origin",  "origin",  "origin"), 
                              c("Mod01", "Mod02", "Mod03", "Mod04", "Mod05", "Mod06"))
 names(bin.sp.origins) <- c("from", "to")
@@ -334,6 +353,7 @@ bin.sp.mods.edges$to <- rownames(bin.DIRT.sp.mods)
 bin.sp.mods.edges <- bin.sp.mods.edges[order(bin.sp.mods.edges$from), ]
 bin.sp.mods.edges <- rbind(bin.sp.origins, bin.sp.mods.edges)
 
+# Create temporary igraph object from adjacency matrix and edge list defining connections
 bin.sp.temp.graph <- graph_from_adjacency_matrix(bin.sp.adjac, mode = "undirected", weighted = TRUE, diag = FALSE)
 bin.sp.temp.graph.edge.att <- E(bin.sp.temp.graph)$weight
 bin.sp.temp.graph.edge.list <- get.edgelist(bin.sp.temp.graph)
@@ -341,12 +361,13 @@ bin.sp.mods.connect <- as.data.frame(cbind(bin.sp.temp.graph.edge.list, bin.sp.t
 colnames(bin.sp.mods.connect) <- c("from", "to", "value")
 bin.sp.mods.connect$value <- as.numeric(bin.sp.mods.connect$value)
 
+# Calculate number of times each species occurs
 bin.sp.mods.colsums <- as.data.frame(colSums (phyto.comm.aug.bin))
 bin.sp.mods.colsums.match <- as.data.frame(bin.sp.mods.colsums$`colSums(phyto.comm.aug.bin)`[match(bin.sp.mods.edges$to, rownames(bin.sp.mods.colsums))])
 bin.sp.mods.colsums.match <- rbind(c(NA), bin.sp.mods.colsums.match)
 colnames(bin.sp.mods.colsums.match) <- "occur"
 
-# Create data.frame of vertices
+# Create data frame of vertices weighted by number of times species occur
 bin.sp.mods.vertices <- data.frame(name = unique(c(as.character(bin.sp.mods.edges$from), as.character(bin.sp.mods.edges$to))), value = bin.sp.mods.colsums.match)
 bin.sp.mods.vertices$group <- bin.sp.mods.edges$from[match(bin.sp.mods.vertices$name, bin.sp.mods.edges$to)]
 
@@ -354,25 +375,25 @@ bin.sp.mods.vertices$group <- bin.sp.mods.edges$from[match(bin.sp.mods.vertices$
 bin.sp.mods.vertices$id <- NA
 bin.sp.mods.myleaves <- which(is.na(match(bin.sp.mods.vertices$name, bin.sp.mods.edges$from)))
 bin.sp.mods.nleaves <- length(bin.sp.mods.myleaves)
-bin.sp.mods.vertices$id[bin.sp.mods.myleaves]<-seq(1:bin.sp.mods.nleaves)
-bin.sp.mods.vertices$angle <- 90 - 360 * (bin.sp.mods.vertices$id - 22) / bin.sp.mods.nleaves
+bin.sp.mods.vertices$id[bin.sp.mods.myleaves] <- seq(1:bin.sp.mods.nleaves)
+bin.sp.mods.vertices$angle <- 90 - 360 * (bin.sp.mods.vertices$id - 22) / bin.sp.mods.nleaves #correction required depending on number of nodes/leaves
 
 # Calculate the alignment of labels
-bin.sp.mods.vertices$hjust <- ifelse((bin.sp.mods.vertices$angle < 90.01 & bin.sp.mods.vertices$angle > -90), 1, 0)
+bin.sp.mods.vertices$hjust <- if_else((bin.sp.mods.vertices$angle < 90.01 & bin.sp.mods.vertices$angle > -90), 1, 0)
 
-# Flip label angles
-bin.sp.mods.vertices$angle <- ifelse(bin.sp.mods.vertices$angle < -90 | bin.sp.mods.vertices$angle > 90, bin.sp.mods.vertices$angle + 180, bin.sp.mods.vertices$angle)
+# Flip label angles depending on their alignments to make them readable
+bin.sp.mods.vertices$angle <- if_else(bin.sp.mods.vertices$angle < -90 | bin.sp.mods.vertices$angle > 90, bin.sp.mods.vertices$angle + 180, bin.sp.mods.vertices$angle)
 
-# Add trait data
+# Add vectors of trait data (requires values for each species in the plot)
 bin.sp.mods.vertices <- merge(bin.sp.mods.vertices, phyto.traits["SUSPECTED_TOXIN_PRODUCING"], by.x = "name", by.y = 0, all.x = TRUE)
 bin.sp.mods.vertices <- merge(bin.sp.mods.vertices, phyto.traits["SILICA_USING"], by.x = "name", by.y = 0, all.x = TRUE)
 bin.sp.mods.vertices <- merge(bin.sp.mods.vertices, phyto.traits["CHL_B"], by.x = "name", by.y = 0, all.x = TRUE)
 bin.sp.mods.vertices <- merge(bin.sp.mods.vertices, phyto.traits["CHL_C"], by.x = "name", by.y = 0, all.x = TRUE)
 
-# Create a graph object
+# Create final igraph object based on edges and vertices
 bin.sp.mods.mygraph <- graph_from_data_frame(bin.sp.mods.edges, vertices = bin.sp.mods.vertices)
 
-# Create connection objects
+# Create connection objects defining line origins and destinations
 bin.sp.mods.from <- match(bin.sp.mods.connect$from, bin.sp.mods.vertices$name)
 bin.sp.mods.to <- match(bin.sp.mods.connect$to, bin.sp.mods.vertices$name)
 ```
@@ -390,17 +411,17 @@ bin.sp.edge.group.plot <- ggraph(bin.sp.mods.mygraph, layout = 'dendrogram', cir
   scale_size_continuous(range = c(0.1, 10)) + 
   labs(color = "Modules", title = "Unweighted species modules") + 
   theme_void() + 
-  theme(plot.title = element_text(hjust=0.5), 
+  theme(plot.title = element_text(hjust = 0.5), 
         plot.margin = unit(c(0, 0, 0, 0), "cm")) + 
   expand_limits(x = c(-1.5, 1.5), y = c(-1.5, 1.5))
 bin.sp.edge.group.plot
 ```
 
-This plot shows the module structure of phytoplankton species, with different colours indicating community groups. Node size indicates the frequency that each species occurs in the dataset and edges reflect species co-occurrence. Darker edges indicate more instances of co-occurrence; however, patterns may be obscured in cases such as these with a large number of co-occurring taxa.
+This plot shows the module structure of phytoplankton species, with different colours reflecting community groups. Node size indicates the frequency that each species occurs in the dataset and edges indicate species co-occurrence. Darker edges reflect more instances of co-occurrence; however, patterns may be obscured in cases such as this with large numbers of co-occurring taxa.
 
 We can see that module 6 (in pink) is the most species rich, while module 3 (in green) is the most species poor. We can also observe that module 2 (in gold) has several common taxa, including _Plagioselmis nannoplanctica_, _Katablepharis ovalis_, and species of the genus _Chromulinaceae_.
 
-We can also visualize the distribution of traits among species modules. For example, we can highlight those taxa that are suspected toxin producers, silica users, or chlorophyll _b_ and _c_ producers.
+We can also visualize the distribution of traits among species modules. For example, using our trait data, we can highlight those taxa that are suspected toxin producers, silica users, or chlorophyll _b_ and _c_ producers.
 
 ```{r, fig.width=14, fig.height=14}
 # Plot identifying suspected toxin producers
@@ -476,13 +497,13 @@ bin.sp.edge.chlc.plot <- ggraph(bin.sp.mods.mygraph, layout = 'dendrogram', circ
 bin.sp.edge.chlc.plot
 ```
 
-From these plot, we can see how different traits are dispersed across modules. For instance, suspected toxin producers occur in each of the modules except number 3 (green), including the relatively common _Aphanocapsa delicatissima_ and _Aphanocapsa elachista_ in module 1 (red), _Aphanocapsa rivularis_ and _Aphanizomenon flosaquae_ in module 2 (gold), _Dolichospermum spiroides_ in module 4 (turquoise), _Aphanothece nidulans_ in module 5 (blue), and _Limnothrix_ sp. in module 6 (pink). Species with silica requirement (i.e. diatoms) and different photosynthetic pigments were also well dispersed across groups. However, chlorophyll _b_ pigmented algae (i.e. chloro- and euglenophytes) were generally more common in modules 5 (blue) and 6 (pink), while chlorophyll _c_ producing species (i.e. ochrophytes, cryptomonads, and dinoflagellates) were more associated with modules 2 (gold), 3 (green), and 4 (turquoise).
+From these plot, we can see how different traits are dispersed across modules. For instance, suspected toxin producers occur in each of the modules except number 3 (green), including the relatively common _Aphanocapsa delicatissima_ and _Aphanocapsa elachista_ in module 1 (red), _Aphanocapsa rivularis_ and _Aphanizomenon flosaquae_ in module 2 (gold), _Dolichospermum spiroides_ in module 4 (turquoise), _Aphanothece nidulans_ in module 5 (blue), and _Limnothrix_ sp. in module 6 (pink). From this, we might conclude that toxin producers (and potentially harmful algal blooms) are widely dispersed, not being limited to any particular set of communities. Species with silica requirement (i.e. diatoms) and different photosynthetic pigments were also well dispersed across groups. However, chlorophyll _b_ pigmented algae (i.e. chloro- and euglenophytes) were generally more common in modules 5 (blue) and 6 (pink), while chlorophyll _c_ producing species (i.e. ochrophytes, cryptomonads, and dinoflagellates) were more associated with modules 2 (gold), 3 (green), and 4 (turquoise). Whether related to these or other correlated traits, findings indicate potential existence of spatial, environmental, or biotic factors driving clustering of species with particular photosynthetic pigments. A subsequent step might involve testing these patterns to determine whether trait clusters are significantly non-random.
 
 <a name="section5"></a>
 
 ## 5. Comparing module structure of weighted and unweighted networks
 
-Finally, we can compare the module structure of the unweighted network graph to that of a network weighted by species biomass. First, we'll compare site modules, using the `gridExtra` package (Auguie 2017) to arrange plots.
+Finally, we can compare the module structure of the unweighted network graph to that of a network weighted by species biomass. First, we'll compare site modules, using the `gridExtra` package (Auguie 2017) to arrange the maps side by side.
 
 ```{r}
 # Load packages
@@ -508,9 +529,10 @@ bio.DIRT@likelihood
 The algorithm detected nine modules with a modularity value of 0.6277079.
 
 ```{r}
-# Extract data for site module structure
+# Extract data for site and species module structure
 bio.DIRT.list <- listModuleInformation(bio.DIRT)
 
+# Create vectors of site assignments for each module (accessed manually from nested lists as follows)
 bio.DIRT.site.mod.1 <- bio.DIRT.list[[2]][[1]][[1]]
 bio.DIRT.site.mod.1.vector <- as.matrix(if_else(rownames(bio.DIRT@moduleWeb) %in% bio.DIRT.site.mod.1, 1, 0))
 bio.DIRT.site.mod.2 <- bio.DIRT.list[[2]][[2]][[1]]
@@ -530,19 +552,26 @@ bio.DIRT.site.mod.8.vector <- as.matrix(if_else(rownames(bio.DIRT@moduleWeb) %in
 bio.DIRT.site.mod.9 <- bio.DIRT.list[[2]][[9]][[1]]
 bio.DIRT.site.mod.9.vector <- as.matrix(if_else(rownames(bio.DIRT@moduleWeb) %in% bio.DIRT.site.mod.9, 1, 0))
 
-# Wrangle data for site module structure
+# Bind vectors of site module assignments
 bio.DIRT.site.mods <- cbind(bio.DIRT.site.mod.1.vector, bio.DIRT.site.mod.2.vector, bio.DIRT.site.mod.3.vector, bio.DIRT.site.mod.4.vector, bio.DIRT.site.mod.5.vector, bio.DIRT.site.mod.6.vector, bio.DIRT.site.mod.7.vector, bio.DIRT.site.mod.8.vector, bio.DIRT.site.mod.9.vector)
 
+# Assign lake names to site module assignments
 rownames(bio.DIRT.site.mods) <- rownames(bio.DIRT@moduleWeb)
+
+# Merge participation coefficients with site module structure 
 bio.DIRT.site.mods <- merge(bio.DIRT.site.mods, bio.DIRT.cz.lower$c, by = "row.names")
 rownames(bio.DIRT.site.mods) <- bio.DIRT.site.mods$Row.names
 bio.DIRT.site.mods <- bio.DIRT.site.mods[, -1]
 
+# Assign module names to site module structure
 colnames(bio.DIRT.site.mods) <- c("Mod01", "Mod02", "Mod03", "Mod04", "Mod05", "Mod06", "Mod07", "Mod08", "Mod09", "c")
+
+# Merge site coordinates with site module structure
 bio.DIRT.site.mods <- merge(bio.DIRT.site.mods, coords2var, by = "row.names")
 rownames(bio.DIRT.site.mods) <- bio.DIRT.site.mods$Row.names
 bio.DIRT.site.mods <- bio.DIRT.site.mods[, -1]
 
+# Create factor indicating site module structure
 bio.DIRT.site.mods['Mods'] <- NA
 bio.DIRT.site.mods$Mods[bio.DIRT.site.mods$Mod01 == 1] <- "Mod01"
 bio.DIRT.site.mods$Mods[bio.DIRT.site.mods$Mod02 == 1] <- "Mod02"
@@ -580,12 +609,12 @@ bio.site.mod.map <- ggmap(basemap, maprange = TRUE) +
 north2(compare.site.mod.map <- grid.arrange(bin.site.mod.map, bio.site.mod.map, nrow = 1), x = 0.95, y = 0.9, symbol = 16)
 ```
 
-Comparing these maps, we can see that the module structure of communities is very different depending on whether or not the species are weighted by their biomass contributions. Not only did the weighted analysis detect a larger number of modules (nine), but the spatial arrangement of modules also differed. However, as with the unweighted network, the module structure based on biomass lacks any clear spatial pattern, suggesting that more local processes differentiate phytoplankton communities across Alberta, Canada.
+Comparing these maps, we can see that the module structure of communities is very different depending on whether or not the connections are weighted by species biomass Not only did the weighted analysis detect a larger number of modules (nine), but the spatial arrangement of modules also differed somewhat. However, as with the unweighted network, the module structure based on biomass lacks a clear spatial pattern, generating the testable hypothesis that more local processes differentiate phytoplankton communities across Alberta, Canada.
 
-We can also look at how species modules differ between the unweighted and weighted networks.
+We can now look at how species modules differ between the unweighted and weighted networks.
 
 ```{r}
-# Extract data for species module structure
+# Create vectors of species assignments for each module (accessed manually from nested lists as follows)
 bio.DIRT.sp.mod.1 <- bio.DIRT.list[[2]][[1]][[2]]
 bio.DIRT.sp.mod.1.vector <- as.matrix(if_else(colnames(bio.DIRT@moduleWeb) %in% bio.DIRT.sp.mod.1, 1, 0))
 bio.DIRT.sp.mod.2 <- bio.DIRT.list[[2]][[2]][[2]]
@@ -605,16 +634,21 @@ bio.DIRT.sp.mod.8.vector <- as.matrix(if_else(colnames(bio.DIRT@moduleWeb) %in% 
 bio.DIRT.sp.mod.9 <- bio.DIRT.list[[2]][[9]][[2]]
 bio.DIRT.sp.mod.9.vector <- as.matrix(if_else(colnames(bio.DIRT@moduleWeb) %in% bio.DIRT.sp.mod.9, 1, 0))
 
-# Wrangle data for species module structure
+# Bind vectors of species module assignments
 bio.DIRT.sp.mods <- cbind(bio.DIRT.sp.mod.1.vector, bio.DIRT.sp.mod.2.vector, bio.DIRT.sp.mod.3.vector, bio.DIRT.sp.mod.4.vector, bio.DIRT.sp.mod.5.vector, bio.DIRT.sp.mod.6.vector, bio.DIRT.sp.mod.7.vector, bio.DIRT.sp.mod.8.vector, bio.DIRT.sp.mod.9.vector)
 
+# Assign species names to species module assignments
 rownames(bio.DIRT.sp.mods) <- colnames(bio.DIRT@moduleWeb)
+
+# Merge participation coefficients with species module structure 
 bio.DIRT.sp.mods <- merge(bio.DIRT.sp.mods, bio.DIRT.cz.higher$c, by = "row.names")
 rownames(bio.DIRT.sp.mods) <- bio.DIRT.sp.mods$Row.names
 bio.DIRT.sp.mods <- bio.DIRT.sp.mods[, -1]
 
+# Assign module names to species module structure
 colnames(bio.DIRT.sp.mods) <- c("Mod01", "Mod02", "Mod03", "Mod04", "Mod05", "Mod06", "Mod07", "Mod08", "Mod09", "c")
 
+# Create factor indicating species module structure
 bio.DIRT.sp.mods['Mods'] <- NA
 bio.DIRT.sp.mods$Mods[bio.DIRT.sp.mods$Mod01 == 1] <- "Mod01"
 bio.DIRT.sp.mods$Mods[bio.DIRT.sp.mods$Mod02 == 1] <- "Mod02"
@@ -627,9 +661,10 @@ bio.DIRT.sp.mods$Mods[bio.DIRT.sp.mods$Mod08 == 1] <- "Mod08"
 bio.DIRT.sp.mods$Mods[bio.DIRT.sp.mods$Mod09 == 1] <- "Mod09"
 bio.DIRT.sp.mods$Mods <- as.factor(bio.DIRT.sp.mods$Mods)
 
-#  Create adjacency matrix and wrangle edge lists
+# Create adjacency matrix from species module structure for hierarchical edge bundling plot
 bio.sp.adjac <- as.one.mode(phyto.comm.aug.bio, fill = 0, project = "higher", weighted = TRUE)
 
+# Define origins, destinations, and edges
 bio.sp.origins <- data.frame(c("origin", "origin", "origin", "origin",  "origin", "origin",  "origin",  "origin",  "origin"), c("Mod01", "Mod02", "Mod03", "Mod04", "Mod05", "Mod06", "Mod07", "Mod08", "Mod09"))
 names(bio.sp.origins) <- c("from", "to")
 bio.sp.mods.edges <- as.data.frame(bio.DIRT.sp.mods$Mods)
@@ -638,6 +673,7 @@ bio.sp.mods.edges$to <- rownames(bio.DIRT.sp.mods)
 bio.sp.mods.edges <- bio.sp.mods.edges[order(bio.sp.mods.edges$from), ]
 bio.sp.mods.edges <- rbind(bio.sp.origins, bio.sp.mods.edges)
 
+# Create temporary igraph object from adjacency matrix and edge list defining connections
 bio.sp.temp.graph <- graph_from_adjacency_matrix(bio.sp.adjac, mode = "undirected", weighted = TRUE, diag = FALSE)
 bio.sp.temp.graph.edge.att <- E(bio.sp.temp.graph)$weight
 bio.sp.temp.graph.edge.list <- get.edgelist(bio.sp.temp.graph)
@@ -645,12 +681,13 @@ bio.sp.mods.connect <- as.data.frame(cbind(bio.sp.temp.graph.edge.list, bio.sp.t
 colnames(bio.sp.mods.connect) <- c("from", "to", "value")
 bio.sp.mods.connect$value <- as.numeric(bio.sp.mods.connect$value)
 
+# Calculate number of times each species occurs
 bio.sp.mods.colsums <- as.data.frame(colSums (phyto.comm.aug.bio))
 bio.sp.mods.colsums.match <- as.data.frame(bio.sp.mods.colsums$`colSums(phyto.comm.aug.bio)`[match(bio.sp.mods.edges$to, rownames(bio.sp.mods.colsums))])
 bio.sp.mods.colsums.match <- rbind(c(NA), bio.sp.mods.colsums.match)
 colnames(bio.sp.mods.colsums.match) <- "occur"
 
-# Create data.frame of vertices
+# Create data frame of vertices weighted by number of times species occur
 bio.sp.mods.vertices <- data.frame(name = unique(c(as.character(bio.sp.mods.edges$from), as.character(bio.sp.mods.edges$to))), value = bio.sp.mods.colsums.match)
 bio.sp.mods.vertices$group <- bio.sp.mods.edges$from[match(bio.sp.mods.vertices$name, bio.sp.mods.edges$to)]
 
@@ -659,18 +696,18 @@ bio.sp.mods.vertices$id <- NA
 bio.sp.mods.myleaves <- which(is.na(match(bio.sp.mods.vertices$name, bio.sp.mods.edges$from)))
 bio.sp.mods.nleaves <- length(bio.sp.mods.myleaves)
 bio.sp.mods.vertices$id[bio.sp.mods.myleaves]<-seq(1:bio.sp.mods.nleaves)
-bio.sp.mods.vertices$angle <- 90 - 360 * (bio.sp.mods.vertices$id - 22) / bio.sp.mods.nleaves
+bio.sp.mods.vertices$angle <- 90 - 360 * (bio.sp.mods.vertices$id - 22) / bio.sp.mods.nleaves #correction required depending on number of nodes/leaves
 
 # Calculate the alignment of labels
-bio.sp.mods.vertices$hjust <- ifelse((bio.sp.mods.vertices$angle < 90.01 & bio.sp.mods.vertices$angle > -90), 1, 0)
+bio.sp.mods.vertices$hjust <- if_else((bio.sp.mods.vertices$angle < 90.01 & bio.sp.mods.vertices$angle > -90), 1, 0)
 
-# Flip label angles
-bio.sp.mods.vertices$angle <- ifelse(bio.sp.mods.vertices$angle < -90 | bio.sp.mods.vertices$angle > 90, bio.sp.mods.vertices$angle + 180, bio.sp.mods.vertices$angle)
+# Flip label angles depending on their alignments to make them readable
+bio.sp.mods.vertices$angle <- if_else(bio.sp.mods.vertices$angle < -90 | bio.sp.mods.vertices$angle > 90, bio.sp.mods.vertices$angle + 180, bio.sp.mods.vertices$angle)
 
-# Create a graph object
+# Create final igraph object based on edges and vertices
 bio.sp.mods.mygraph <- graph_from_data_frame(bio.sp.mods.edges, vertices = bio.sp.mods.vertices)
 
-# Create connection objects
+# Create connection objects defining line origins and destinations
 bio.sp.mods.from <- match(bio.sp.mods.connect$from, bio.sp.mods.vertices$name)
 bio.sp.mods.to <- match(bio.sp.mods.connect$to, bio.sp.mods.vertices$name)
 
@@ -697,9 +734,15 @@ compare.sp.edge.group.plot <- grid.arrange(bio.sp.edge.group.plot, bin.sp.edge.g
 
 ```
 
-Again, we see very different module structures from the weighted and unweighted networks. Note that node sizes indicates relative biomass in the weighted network, which is concentrated in a few key species, including toxin producing _Aphanizomenon gracile_ in module 2 (orange),  _Aphanizomenon flosaquae_ in module 4 (green), _Dolichospermum spiroides_ in module 8 (purple), and _Planktothrix agardhii_ in module 9 (pink).
+Again, we see very different module structures from the weighted and unweighted networks. Note that node sizes indicates relative biomass in the weighted network, which is concentrated in a few key species, including toxin producing _Aphanizomenon gracile_ in module 2 (orange),  _Aphanizomenon flosaquae_ in module 4 (green), _Dolichospermum spiroides_ in module 8 (purple), and _Planktothrix agardhii_ in module 9 (pink). Thus, while the toxin trait is widely distributed across different types of communities, biomass of potential toxin producers (and thus risk of harmful algal blooms) is relatively more concentrated at sites associated with these modules.
 
-As with the site module structure, species results lend themselves to further analysis to understand associations among species within and between groups, including their functional trait and phylogenetic similarities.
+As with the site module structure, species results lend themselves to further analysis to understand associations among species within and between groups, including their functional trait and phylogenetic similarities. Here, the conceptualization of multispecies distributions as site-species networks, and the subsequent analysis and visualization of their module structure, offers an valuable means of communicating biological patterns and generating novel, testable hypotheses for future investigations.
+
+### Additional reading on label propagation algorithms 
+
+(from Loewen et al. 2021a. Bioregions are predominately climatic for fishes of northern lakes. _Global Ecology and Biogeography_)
+
+Modularity optimization is computationally challenging (NP-hard; Miyauchi & Sukegawa 2015), necessitating heuristics to search through solution space of larger networks. The __DIRTLPAb+__ algorithm of Beckett (2016) is a label propagation approach to maximize Barber’s bipartite modularity. Briefly, the label propagation algorithm (LPA) for community detection was proposed by Raghavan et al. (2007), where nodes were initialized with all unique labels, updated iteratively to adopt the most common labels of their neighbours (with ties broken uniformly), and grouped together once no further improvements could be made. The routine was subsequently modified to the bipartite case (LPAb); however, it had a tendency to become trapped in local maxima. To escape such traps, Liu & Murata (2010) incorporated a multistep greedy agglomerative algorithm (LPAb+). Their approach applied asynchronous label propagation (updating node labels of each type in turn) but added a step where resulting groups could be merged if doing so improved the solution, iterating between propagation and aggregation phases. Finally, because label propagation is inherently stochastic, and thus outcomes can vary depending on initialization, Beckett (2016) proposed that LPAb+ should be repeated under different node configurations (i.e. numbers of unique starting labels) and report the greatest ensuing score (DIRTLPAb+).
 
 <a name="section6"></a>
 
@@ -716,6 +759,8 @@ Beckett, S.J. (2016). Improved community detection in weighted bipartite network
 Csardi, G., & Nepusz, T. (2006). The igraph software package for complex network research. _InterJournal_, __Complex Systems__, 1695.
 
 Dormann, C.F., Gruber, B., & Fründ, J. (2008). Introducing the bipartite package: analysing ecological networks. _R News_, __8__, 8–11.
+
+Holtz, Y. Add labels to Hierarchical Edge Bundling. R Graph Gallery. https://www.r-graph-gallery.com/311-add-labels-to-hierarchical-edge-bundling.html
 
 Guimerà, R, & Amaral, L.A.N. (2005). Functional cartography of complex metabolic networks. _Nature_, __433__, 895–900.
 
